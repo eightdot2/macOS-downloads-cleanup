@@ -1,5 +1,3 @@
-# macOS-downloads-cleanup
-auto deletes files in Mac downloads folder on a schedule
 # macOS Downloads Cleanup Automation
 
 **System**: macOS Launch Agent  
@@ -46,6 +44,98 @@ This system automatically removes files from the user's Downloads folder that ar
 - **Age Threshold**: Files modified >10 days ago
 - **File Types**: All files (directories excluded)
 - **Action**: Permanent deletion (not moved to Trash)
+
+---
+
+## Installation
+
+### 1. Create the cleanup script
+```bash
+vi ~/cleanup-downloads.sh
+```
+
+Copy the following content:
+```bash
+#!/bin/bash
+
+# Downloads cleanup script - Delete files older than 10 days
+# Security: Explicit path checking and logging
+
+DOWNLOADS_DIR="$HOME/Downloads"
+LOG_FILE="$HOME/Library/Logs/downloads-cleanup.log"
+DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Ensure Downloads directory exists and is actually our Downloads folder
+if [[ ! -d "$DOWNLOADS_DIR" ]] || [[ "$DOWNLOADS_DIR" != */Downloads ]]; then
+    echo "[$DATE] ERROR: Downloads directory not found or path invalid: $DOWNLOADS_DIR" >> "$LOG_FILE"
+    exit 1
+fi
+
+echo "[$DATE] Starting Downloads cleanup..." >> "$LOG_FILE"
+
+# Count files before deletion
+FILES_TO_DELETE=$(find "$DOWNLOADS_DIR" -type f -mtime +10 2>/dev/null | wc -l)
+
+if [[ $FILES_TO_DELETE -eq 0 ]]; then
+    echo "[$DATE] No files older than 10 days found" >> "$LOG_FILE"
+    exit 0
+fi
+
+echo "[$DATE] Found $FILES_TO_DELETE files to delete" >> "$LOG_FILE"
+
+# List files being deleted (for audit trail)
+find "$DOWNLOADS_DIR" -type f -mtime +10 -print >> "$LOG_FILE" 2>&1
+
+# Delete the files
+find "$DOWNLOADS_DIR" -type f -mtime +10 -delete 2>> "$LOG_FILE"
+
+echo "[$DATE] Cleanup completed" >> "$LOG_FILE"
+```
+
+### 2. Make script executable
+```bash
+chmod +x ~/cleanup-downloads.sh
+```
+
+### 3. Create the Launch Agent plist
+```bash
+vi ~/Library/LaunchAgents/com.user.downloads-cleanup.plist
+```
+
+Copy the following content:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.downloads-cleanup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/[USERNAME]/cleanup-downloads.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>604800</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/[USERNAME]/Library/Logs/downloads-cleanup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/[USERNAME]/Library/Logs/downloads-cleanup-error.log</string>
+</dict>
+</plist>
+```
+
+**Note**: Replace `[USERNAME]` with your actual username.
+
+### 4. Create logs directory
+```bash
+mkdir -p ~/Library/Logs
+```
+
+### 5. Load the Launch Agent
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.downloads-cleanup.plist
+```
 
 ---
 
@@ -96,7 +186,9 @@ find ~/Downloads -type f -mtime +10 -print
 
 ---
 
-## Time Intervals Reference
+## Customisation Options
+
+### Time Intervals Reference
 
 | Frequency | Seconds | Configuration |
 |-----------|---------|---------------|
@@ -106,14 +198,12 @@ find ~/Downloads -type f -mtime +10 -print
 | Bi-weekly | 1209600 | `<integer>1209600</integer>` |
 | Monthly | 2592000 | `<integer>2592000</integer>` |
 
----
-
-## File Age Thresholds Reference
+### File Age Thresholds Reference
 
 | Age Threshold | Configuration | Description |
 |---------------|---------------|-------------|
 | 7 days | `-mtime +7` | More aggressive cleanup |
-| 10 days | `-mtime +10` | **Current setting** |
+| 10 days | `-mtime +10` | **Default setting** |
 | 14 days | `-mtime +14` | Conservative cleanup |
 | 30 days | `-mtime +30` | Long retention |
 
@@ -140,7 +230,7 @@ find ~/Downloads -type f -mtime +10 -print
 
 ---
 
-## Current Operational Profile
+## Operational Profile
 
 ### Cleanup Cycle Example
 - **Day 1**: File downloaded
@@ -167,7 +257,7 @@ find ~/Downloads -type f -mtime +10 -print
 - Separate error logging for troubleshooting
 
 ### Recovery
-- Files are permanently deleted (not Trash)
+- Files are permanently deleted (not moved to Trash)
 - No automated recovery mechanism
 - Restore only possible from backups
 
@@ -199,6 +289,12 @@ find "$DOWNLOADS_DIR" -type f \( -name "*.mp4" -o -name "*.jpg" -o -name "*.png"
 - User-level file system access
 - Bash shell availability
 - Write permissions to `~/Library/Logs/`
+
+---
+
+## License
+
+MIT License - Feel free to modify and distribute as needed.
 
 ---
 
